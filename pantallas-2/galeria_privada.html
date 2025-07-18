@@ -1,0 +1,114 @@
+<?php
+// galeria_privada.php
+include '../conexion/conexion.php';
+session_start();
+// --- Lógica de galería privada ---
+$token = isset($_GET['token']) ? $_GET['token'] : '';
+$mensaje = '';
+$galeria = null;
+$fotos = [];
+$seleccionadas = [];
+
+// Cargar galería y fotos desde la base de datos
+if ($token) {
+    $sql = "SELECT * FROM galerias WHERE token = '" . mysqli_real_escape_string($conn, $token) . "' LIMIT 1";
+    $res = mysqli_query($conn, $sql);
+    if ($res && mysqli_num_rows($res) > 0) {
+        $galeria = mysqli_fetch_assoc($res);
+        $galeria_id = $galeria['id'];
+        $sql_fotos = "SELECT * FROM fotos WHERE galeria_id = $galeria_id";
+        $res_fotos = mysqli_query($conn, $sql_fotos);
+        while ($foto = mysqli_fetch_assoc($res_fotos)) {
+            $fotos[] = $foto;
+            if ($foto['is_selected']) {
+                $seleccionadas[] = $foto['id'];
+            }
+        }
+    } else {
+        $mensaje = 'Galería no encontrada.';
+    }
+} else {
+    $mensaje = 'Token de galería no proporcionado.';
+}
+
+// Procesar selección de fotos
+if (isset($_POST['seleccionadas']) && $galeria) {
+    $seleccionadas_post = $_POST['seleccionadas'];
+    foreach ($fotos as $foto) {
+        $is_selected = in_array($foto['id'], $seleccionadas_post) ? 1 : 0;
+        $foto_id = $foto['id'];
+        mysqli_query($conn, "UPDATE fotos SET is_selected = $is_selected WHERE id = $foto_id");
+    }
+    mysqli_query($conn, "UPDATE galerias SET estado = 'selected' WHERE id = {$galeria['id']}");
+    $mensaje = 'Selección enviada exitosamente. ' . count($seleccionadas_post) . ' fotos seleccionadas.';
+    $seleccionadas = $seleccionadas_post;
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Galería Privada</title>
+    <style>
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+        .card { border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; padding: 10px; position: relative; }
+        .card.selected { box-shadow: 0 0 0 3px #3490dc; background: #e3f2fd; }
+        .card img { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; }
+        .check { position: absolute; top: 10px; right: 10px; background: #3490dc; color: #fff; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .badges { display: flex; gap: 10px; margin-bottom: 20px; }
+        .badge { background: #eee; border-radius: 12px; padding: 4px 12px; font-size: 14px; }
+        .badge.selected { background: #3490dc; color: #fff; }
+        .btn { background: #3490dc; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-size: 16px; cursor: pointer; margin-top: 20px; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .alert { background: #ffeaea; color: #c00; border-radius: 6px; padding: 12px; margin-bottom: 20px; }
+    </style>
+</head>
+<body style="background:#f4f6fa; font-family:sans-serif;">
+    <div style="max-width:900px; margin:40px auto; background:#fff; border-radius:12px; box-shadow:0 2px 12px #0001; padding:32px;">
+        <h2 style="margin-bottom:8px;">Tu Galería Privada</h2>
+        <p style="color:#666; margin-bottom:24px;">Selecciona las fotos que deseas que sean editadas</p>
+
+        <div class="badges">
+            <span class="badge">Fotos disponibles: <?php echo count($fotos); ?></span>
+            <span class="badge selected">Seleccionadas: <?php echo count($seleccionadas); ?></span>
+        </div>
+
+        <?php if ($mensaje): ?>
+            <div class="alert"><?php echo $mensaje; ?></div>
+        <?php endif; ?>
+
+        <?php if (!$galeria): ?>
+            <div class="alert"><?php echo $mensaje; ?></div>
+        <?php elseif (count($fotos) === 0): ?>
+            <div class="card" style="text-align:center; padding:40px;">
+                <p style="color:#888;">Aún no hay fotos disponibles en tu galería.</p>
+                <p style="font-size:13px; color:#bbb; margin-top:8px;">Te notificaremos por correo cuando las fotos estén listas para revisar.</p>
+            </div>
+        <?php else: ?>
+            <form method="POST">
+                <div class="grid">
+                <?php foreach ($fotos as $foto): ?>
+                    <div class="card<?php echo in_array($foto['id'], $seleccionadas) ? ' selected' : ''; ?>">
+                        <img src="<?php echo htmlspecialchars($foto['url']); ?>" alt="<?php echo htmlspecialchars($foto['filename']); ?>">
+                        <?php if (in_array($foto['id'], $seleccionadas)): ?>
+                            <div class="check">&#10003;</div>
+                        <?php endif; ?>
+                        <div style="padding:8px 0 0 0;">
+                            <label style="font-size:14px; color:#555;">
+                                <input type="checkbox" name="seleccionadas[]" value="<?php echo $foto['id']; ?>" <?php echo in_array($foto['id'], $seleccionadas) ? 'checked' : ''; ?>>
+                                <?php echo htmlspecialchars($foto['filename']); ?>
+                            </label>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+                </div>
+                <div style="text-align:center;">
+                    <button type="submit" class="btn" <?php echo count($fotos) === 0 ? 'disabled' : ''; ?>>Enviar Selección</button>
+                </div>
+            </form>
+            <div style="margin-top:32px; text-align:center; color:#666; font-size:15px;">
+                Haz clic en las fotos para seleccionarlas. Una vez que envíes tu selección, procederemos con la edición profesional.
+            </div>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
